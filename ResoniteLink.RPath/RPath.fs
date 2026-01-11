@@ -6,7 +6,7 @@ open System.Threading.Tasks
 open ResoniteLink
 
 type ErrorInfo = string
-type RPath<'T> = ILinkInterface -> Task<'T seq>
+type RPath<'T> = ILinkInterface -> ValueTask<'T seq>
 
 type ResoniteLinkException(errorMessage) =
     inherit Exception(errorMessage)
@@ -20,9 +20,15 @@ module Operators =
         fun link ->
             task {
                 let! boundValue = m link
-                let! secondaryBoundValues = boundValue |> Seq.map (fun result -> binder result link) |> Task.WhenAll
+
+                let! secondaryBoundValues =
+                    boundValue
+                    |> Seq.map (fun result -> binder result link |> _.AsTask())
+                    |> Task.WhenAll
+
                 return secondaryBoundValues |> Seq.collect id
             }
+            |> ValueTask<'U seq>
 
     let inline (>=>)
         ([<InlineIfLambda>] left: 'In -> RPath<'Inner>)
@@ -59,9 +65,9 @@ module RPath =
         }
 
     let inline wrap value : RPath<'T> =
-        fun _ -> value |> Seq.singleton |> Task.FromResult
+        fun _ -> value |> Seq.singleton |> ValueTask<_>
 
-    let empty: RPath<_> = fun _ -> Seq.empty |> Task.FromResult
+    let empty: RPath<_> = fun _ -> Seq.empty |> ValueTask<_>
 
     let inline andThen ([<InlineIfLambda>] binder: 'T -> RPath<'U>) ([<InlineIfLambda>] m: RPath<'T>) : RPath<'U> =
         m >>= binder
@@ -78,6 +84,7 @@ module RPath =
                 let! slot = getSlot slot.ID 1 deep link
                 return slot.Children.AsEnumerable()
             }
+            |> ValueTask<Slot seq>
 
     let inline childrenShallow slot : RPath<Slot> = children false slot
     let inline childrenDeep slot : RPath<Slot> = children true slot
@@ -95,6 +102,7 @@ module RPath =
                 let! slot = getSlot slot.ID (-1) deep link
                 return collectChildrenRecursive slot
             }
+            |> ValueTask<Slot seq>
 
     let inline descendantsShallow slot : RPath<Slot> = descendants false slot
     let inline descendantsDeep slot : RPath<Slot> = descendants true slot
@@ -102,13 +110,14 @@ module RPath =
 
     let inline parent deep (slot: Slot) : RPath<Slot> =
         if isNull slot.Parent.TargetID then
-            fun _ -> Task.FromResult Seq.empty
+            fun _ -> ValueTask<Slot seq>(Seq.empty)
         else
             fun link ->
                 task {
                     let! slot = getSlot slot.Parent.TargetID 0 deep link
                     return Seq.singleton slot
                 }
+                |> ValueTask<Slot seq>
 
     let inline parentShallow (slot: Slot) : RPath<Slot> = parent false slot
     let inline parentDeep (slot: Slot) : RPath<Slot> = parent true slot
@@ -130,6 +139,7 @@ module RPath =
 
                 return ancestorList |> List.toSeq
             }
+            |> ValueTask<Slot seq>
 
     let inline ancestorsShallow slot = ancestors false slot
     let inline ancestorsDeep slot = ancestors true slot
@@ -142,6 +152,7 @@ module RPath =
                 let! results = previousQuery link
                 return results |> Seq.filter predicate
             }
+            |> ValueTask<'T seq>
 
     let inline map ([<InlineIfLambda>] projection) ([<InlineIfLambda>] previousQuery: RPath<'T>) : RPath<'U> =
         // same as
@@ -151,6 +162,7 @@ module RPath =
                 let! results = previousQuery link
                 return results |> Seq.map projection
             }
+            |> ValueTask<'U seq>
 
     let inline mapAll ([<InlineIfLambda>] projection) ([<InlineIfLambda>] previousQuery: RPath<'T>) : RPath<'U> =
         fun link ->
@@ -158,6 +170,7 @@ module RPath =
                 let! results = previousQuery link
                 return projection results
             }
+            |> ValueTask<'U seq>
 
     let inline flatmap ([<InlineIfLambda>] mapper: 'I -> RPath<'T>) ([<InlineIfLambda>] previousQuery) : RPath<'T> =
         previousQuery >>= mapper
@@ -170,13 +183,14 @@ module RPath =
                 || (slot.Components.Count > 0 && slot.Components[0].IsReferenceOnly)
             )
         then
-            fun _ -> Task.FromResult(slot.Components.AsEnumerable())
+            fun _ -> ValueTask<Component seq>(slot.Components.AsEnumerable())
         else
             fun link ->
                 task {
                     let! slot = getSlot slot.ID 0 true link
                     return slot.Components.AsEnumerable()
                 }
+                |> ValueTask<Component seq>
 
     let inline ofType (componentType: string) ([<InlineIfLambda>] components: RPath<Component>) : RPath<Component> =
         fun link ->
@@ -184,6 +198,7 @@ module RPath =
                 let! results = components link
                 return results |> Seq.filter (fun c -> c.ComponentType = componentType)
             }
+            |> ValueTask<Component seq>
 
     let inline getMember<'T when 'T :> ResoniteLink.Member>
         (memberName: string)
@@ -203,6 +218,7 @@ module RPath =
                         | :? 'T as value -> Some value
                         | _ -> None)
             }
+            |> ValueTask<'T seq>
 
     let inline itemAt (index: int) ([<InlineIfLambda>] previousQuery: RPath<'T>) : RPath<'T> =
         fun link ->
@@ -215,6 +231,7 @@ module RPath =
                     | None -> Seq.empty
                     | Some value -> Seq.singleton value
             }
+            |> ValueTask<'T seq>
 
     let inline take (count: int) ([<InlineIfLambda>] previousQuery: RPath<'T>) : RPath<'T> =
         fun link ->
@@ -222,6 +239,7 @@ module RPath =
                 let! result = previousQuery link
                 return Seq.take count result
             }
+            |> ValueTask<'T seq>
 
     let inline skip (count: int) ([<InlineIfLambda>] previousQuery: RPath<'T>) : RPath<'T> =
         fun link ->
@@ -229,6 +247,7 @@ module RPath =
                 let! result = previousQuery link
                 return Seq.skip count result
             }
+            |> ValueTask<'T seq>
 
     let inline slice (start: int, stop: int) ([<InlineIfLambda>] previousQuery: RPath<'T>) : RPath<'T> =
         fun link ->
@@ -246,6 +265,7 @@ module RPath =
                     |> Seq.skip normalizedStart
                     |> Seq.take (normalizedStop - normalizedStart)
             }
+            |> ValueTask<'T seq>
 
     let inline dereference
         (dereferenceFunc:
@@ -255,7 +275,7 @@ module RPath =
         : RPath<'U> =
         fun link ->
             if isNull referenceValue.TargetID then
-                Task.FromResult(Seq.empty)
+                ValueTask<'U seq>(Seq.empty)
             else
                 task {
                     let! dereferencedValue = dereferenceFunc link referenceValue.TargetID
@@ -265,6 +285,7 @@ module RPath =
                     else
                         return raise (ResoniteLinkException dereferencedValue.ErrorInfo)
                 }
+                |> ValueTask<'U seq>
 
     let inline dereferenceSlot deep (referenceValue: Reference) : RPath<Slot> =
         let getSlot (link: ILinkInterface) slotID =
@@ -288,6 +309,7 @@ module RPath =
                 | :? System.Collections.Generic.IEnumerable<'T> as properType -> return properType
                 | _ -> return Seq.empty
             }
+            |> ValueTask<'T seq>
 
     let inline toResultAsync (link: ILinkInterface) ([<InlineIfLambda>] query: RPath<'T>) =
         task {
@@ -297,6 +319,7 @@ module RPath =
             with :? ResoniteLinkException as e ->
                 return Result.Error e
         }
+        |> ValueTask<Result<'T seq, ResoniteLinkException>>
 
     let inline toSeqAsync (link: ILinkInterface) ([<InlineIfLambda>] query: RPath<'T>) = query link
 
@@ -305,12 +328,14 @@ module RPath =
             let! items = query link
             return (Seq.toArray items)
         }
+        |> ValueTask<'T[]>
 
     let inline toResizeArray (link: ILinkInterface) (query: RPath<'T>) =
         task {
             let! items = query link
             return (ResizeArray items)
         }
+        |> ValueTask<ResizeArray<'T>>
 
     let root: RPath<Slot> =
         fun link ->
@@ -318,3 +343,4 @@ module RPath =
                 let! rootSlot = getSlot "Root" 0 false link
                 return Seq.singleton rootSlot
             }
+            |> ValueTask<Slot seq>
