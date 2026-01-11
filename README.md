@@ -75,7 +75,7 @@ One notable difference is that with F# API you define queries without providing 
 
 ```fsharp
 // Using the pipe operator
-let nodesPipe: Task<string[]> =
+let nodesPipe =
     root
     |> andThen childrenDeep
     |> filter (fun x -> x.Name.Value = "TestSlot")
@@ -90,7 +90,7 @@ let nodesPipe: Task<string[]> =
 // Some special operators (>>=/bind and >=>/Kleisli) can be used for extra terseness
 // The >>= indicates clearly where new data is fetched from the data model
 // |> is an in-memory operation
-let nodesOperators: Task<string[]> =
+let nodesOperators =
     root
     >>= childrenDeep
     |> filter (fun x -> x.Name.Value = "TestSlot")
@@ -103,7 +103,7 @@ let nodesOperators: Task<string[]> =
     |> toArrayAsync (link.ToInterface())
 
 // C# style extension methods
-let nodesExtensions: Task<System.Collections.Generic.List<string>> =
+let nodesExtensions =
     link
         .RPath()
         .Children()
