@@ -57,6 +57,7 @@ else
 - On demand: It will communicate with ResoniteLink to expore the heigherarchy as it needs to.
 - No batching of requests: Each request for data is a separtate request, so queries that require many fetches of new data will have high latency
 - Immutable and composabe: when calling a method on the builder a new one is returned istead of modifying the current instance. You can use this to reuse parts of queries to create more complex behavior. 
+- .NET Standard 2.0: compatible with .NET and .NET Framework (Unity)
 
 ## FSharp API
 
