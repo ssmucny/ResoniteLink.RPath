@@ -12,27 +12,27 @@ type RPathBuilder<'T> =
 [<Extension>]
 type LinkInterfaceExtensions =
     [<Extension>]
-    static member RPath(linkInterface: ILinkInterface) =
+    static member inline RPath(linkInterface: ILinkInterface) =
         { Link = linkInterface
           RunWith = RPath.root }
 
     [<Extension>]
-    static member RPath(linkInterface: LinkInterface) =
+    static member inline RPath(linkInterface: LinkInterface) =
         { Link = linkInterface.ToInterface()
           RunWith = RPath.root }
 
     [<Extension>]
-    static member RPath(linkInterface: ILinkInterface, initialValue) =
+    static member inline RPath(linkInterface: ILinkInterface, initialValue) =
         { Link = linkInterface
           RunWith = RPath.wrap initialValue }
 
     [<Extension>]
-    static member RPath(linkInterface: LinkInterface, initialValue) =
+    static member inline RPath(linkInterface: LinkInterface, initialValue) =
         { Link = linkInterface.ToInterface()
           RunWith = RPath.wrap initialValue }
 
     [<Extension>]
-    static member inline ToInterface(link: LinkInterface) =
+    static member ToInterface(link: LinkInterface) =
         ILinkInterface.ofResoniteLinkInterface link
 
 
