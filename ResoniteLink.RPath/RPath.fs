@@ -96,6 +96,7 @@ module RPath =
 
 
     let inline parent deep (slot: Slot) : RPath<Slot> =
+        if isNull slot.Parent.TargetID then fun _ -> Task.FromResult Seq.empty else
         fun link ->
             task {
                 match!
