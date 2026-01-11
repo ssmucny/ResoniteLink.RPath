@@ -112,7 +112,7 @@ let nodesExtensions =
         .OfType("FrooxEngine.ReferenceField<FrooxEngine.Slot>")
         .Member<Reference>("Reference")
         .DereferenceSlot()
-        .Ancestors()
+        .AncestorsShallow()
         .Select(_.Name.Value)
         .ToListAsync()
 ```
