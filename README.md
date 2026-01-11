@@ -74,22 +74,22 @@ The underlying API is implemented in F#, and that API can be utilized directly a
 One notable difference is that with F# API you define queries without providing the LinkInterface until you want to execute the query (called point free style).
 
 ```fsharp
-// Examples creating the query from above using the F# API
-
 // Using the pipe operator
-let nodesPipes: Task<string[]> =
+let nodesPipe: Task<string[]> =
     root
     |> andThen childrenDeep
     |> filter (fun x -> x.Name.Value = "TestSlot")
     |> andThen components
     |> ofType "FrooxEngine.ReferenceField<FrooxEngine.Slot>"
     |> getMember<Reference> "Reference"
-    |> dereferenceSlotShallow
+    |> andThen dereferenceSlotShallow
     |> andThen ancestorsShallow
     |> map _.Name.Value
-    |> toArrayAsync (linkObject.ToInterface())
+    |> toArrayAsync (link.ToInterface())
     
-// Some special opeators (>>=/bind and >=>/Kleisli) can be used for extra terseness
+// Some special operators (>>=/bind and >=>/Kleisli) can be used for extra terseness
+// The >>= indicates clearly where new data is fetched from the data model
+// |> is an in-memory operation
 let nodesOperators: Task<string[]> =
     root
     >>= childrenDeep
@@ -97,14 +97,14 @@ let nodesOperators: Task<string[]> =
     >>= components
     |> ofType "FrooxEngine.ReferenceField<FrooxEngine.Slot>"
     |> getMember<Reference> "Reference"
-    |> dereferenceSlotShallow
+    >>= dereferenceSlotShallow
     >>= ancestorsShallow
     |> map _.Name.Value
-    |> toArrayAsync (linkObject.ToInterface())
+    |> toArrayAsync (link.ToInterface())
 
 // C# style extension methods
 let nodesExtensions: Task<System.Collections.Generic.List<string>> =
-    linkObject
+    link
         .RPath()
         .Children()
         .Where(fun x -> x.Name.Value = "TestSlot")

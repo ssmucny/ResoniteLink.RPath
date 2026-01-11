@@ -3,6 +3,7 @@ namespace ResoniteLink.RPath
 open System
 open System.Runtime.CompilerServices
 open ResoniteLink
+open ResoniteLink.RPath
 
 [<Struct>]
 type RPathBuilder<'T> =
@@ -81,17 +82,17 @@ type ReferenceBuilderExtensions =
     [<Extension>]
     static member inline DereferenceSlot(referenceQuery: RPathBuilder<Reference>) =
         { Link = referenceQuery.Link
-          RunWith = RPath.dereferenceSlotDeep referenceQuery.RunWith }
+          RunWith = RPath.flatmap RPath.dereferenceSlotDeep referenceQuery.RunWith }
 
     [<Extension>]
     static member inline DereferenceSlotShallow(referenceQuery: RPathBuilder<Reference>) =
         { Link = referenceQuery.Link
-          RunWith = RPath.dereferenceSlotShallow referenceQuery.RunWith }
+          RunWith = RPath.flatmap RPath.dereferenceSlotShallow referenceQuery.RunWith }
 
     [<Extension>]
     static member inline DereferenceComponent(referenceQuery: RPathBuilder<Reference>) =
         { Link = referenceQuery.Link
-          RunWith = RPath.dereferenceComponent referenceQuery.RunWith }
+          RunWith = RPath.flatmap RPath.dereferenceComponent referenceQuery.RunWith }
 
 [<Extension>]
 type SlotQueryBuilderExtensions =

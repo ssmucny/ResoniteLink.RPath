@@ -35,7 +35,6 @@ module RPath =
 
     let illegalApiResponse response =
         raise (Exception $"Illegal ResoniteLink API response type: {response.GetType().FullName}")
-        Seq.empty
 
     let (|FailedResponse|SlotResponse|ComponentResponse|AssetResponse|) (response: Response) =
         match response with
@@ -47,6 +46,17 @@ module RPath =
             invalidArg
                 (nameof response)
                 $"The provided message is not a supported subtype: %s{otherwise.GetType().FullName}"
+
+    let getSlot slotID depth includeComponentData (link: ILinkInterface) =
+        task {
+            let! result =
+                link.GetSlotData(GetSlot(SlotID = slotID, Depth = depth, IncludeComponentData = includeComponentData))
+
+            if result.Success then
+                return result.Data
+            else
+                return raise (ResoniteLinkException result.ErrorInfo)
+        }
 
     let inline wrap value : RPath<'T> =
         fun _ -> value |> Seq.singleton |> Task.FromResult
@@ -65,10 +75,8 @@ module RPath =
     let inline children (deep: bool) (slot: Slot) : RPath<Slot> =
         fun link ->
             task {
-                match! link.GetSlotData(GetSlot(SlotID = slot.ID, Depth = 1, IncludeComponentData = deep)) with
-                | FailedResponse err -> return ResoniteLinkException.Raise err
-                | SlotResponse slot -> return slot.Children.AsEnumerable()
-                | otherwise -> return illegalApiResponse otherwise
+                let! slot = getSlot slot.ID 1 deep link
+                return slot.Children.AsEnumerable()
             }
 
     let inline childrenShallow slot : RPath<Slot> = children false slot
@@ -82,13 +90,10 @@ module RPath =
         }
 
     let inline descendants (deep: bool) (slot: Slot) : RPath<Slot> =
-
         fun link ->
             task {
-                match! link.GetSlotData(GetSlot(SlotID = slot.ID, Depth = (-1), IncludeComponentData = deep)) with
-                | FailedResponse err -> return ResoniteLinkException.Raise err
-                | SlotResponse slot -> return collectChildrenRecursive slot
-                | otherwise -> return illegalApiResponse otherwise
+                let! slot = getSlot slot.ID (-1) deep link
+                return collectChildrenRecursive slot
             }
 
     let inline descendantsShallow slot : RPath<Slot> = descendants false slot
@@ -96,16 +101,14 @@ module RPath =
 
 
     let inline parent deep (slot: Slot) : RPath<Slot> =
-        if isNull slot.Parent.TargetID then fun _ -> Task.FromResult Seq.empty else
-        fun link ->
-            task {
-                match!
-                    link.GetSlotData(GetSlot(SlotID = slot.Parent.TargetID, Depth = 0, IncludeComponentData = deep))
-                with
-                | FailedResponse err -> return ResoniteLinkException.Raise err
-                | SlotResponse slot -> return Seq.singleton slot
-                | otherwise -> return illegalApiResponse otherwise
-            }
+        if isNull slot.Parent.TargetID then
+            fun _ -> Task.FromResult Seq.empty
+        else
+            fun link ->
+                task {
+                    let! slot = getSlot slot.Parent.TargetID 0 deep link
+                    return Seq.singleton slot
+                }
 
     let inline parentShallow (slot: Slot) : RPath<Slot> = parent false slot
     let inline parentDeep (slot: Slot) : RPath<Slot> = parent true slot
@@ -117,23 +120,13 @@ module RPath =
                 let mutable currentSlot: Slot = slot
 
                 if currentSlot.IsReferenceOnly then
-                    match! link.GetSlotData(GetSlot(SlotID = slot.ID, Depth = 0, IncludeComponentData = deep)) with
-                    | FailedResponse err -> raise (ResoniteLinkException err)
-                    | SlotResponse slotData -> currentSlot <- slotData
-                    | otherwise -> illegalApiResponse otherwise |> ignore
+                    let! slot = getSlot slot.ID 0 deep link
+                    currentSlot <- slot
 
                 while not <| isNull currentSlot.Parent.TargetID do
-                    match!
-                        link.GetSlotData(
-                            GetSlot(SlotID = currentSlot.Parent.TargetID, Depth = 0, IncludeComponentData = deep)
-                        )
-                    with
-                    | FailedResponse err -> raise (ResoniteLinkException err)
-                    | SlotResponse slotData ->
-                        currentSlot <- slotData
-                        ancestorList <- currentSlot :: ancestorList
-                        // updateRootCheck ()
-                    | otherwise -> illegalApiResponse otherwise |> ignore
+                    let! slot = getSlot currentSlot.Parent.TargetID 0 deep link
+                    currentSlot <- slot
+                    ancestorList <- currentSlot :: ancestorList
 
                 return ancestorList |> List.toSeq
             }
@@ -181,10 +174,8 @@ module RPath =
         else
             fun link ->
                 task {
-                    match! link.GetSlotData(GetSlot(SlotID = slot.ID, Depth = 0, IncludeComponentData = true)) with
-                    | FailedResponse err -> return ResoniteLinkException.Raise err
-                    | SlotResponse slotData -> return slotData.Components.AsEnumerable()
-                    | otherwise -> return illegalApiResponse otherwise
+                    let! slot = getSlot slot.ID 0 true link
+                    return slot.Components.AsEnumerable()
                 }
 
     let inline ofType (componentType: string) ([<InlineIfLambda>] components: RPath<Component>) : RPath<Component> =
@@ -193,17 +184,25 @@ module RPath =
                 let! results = components link
                 return results |> Seq.filter (fun c -> c.ComponentType = componentType)
             }
-            
-    let inline getMember<'T when 'T :> ResoniteLink.Member> (memberName: string)  ([<InlineIfLambda>] previousQuery: RPath<Component>) : RPath<'T> = fun link ->
-        task {
-            let! results = previousQuery link
-            return 
-                results
-                |> Seq.map (fun c -> c.Members.TryGetValue memberName)
-                |> Seq.filter fst
-                |> Seq.map snd
-                |> Seq.choose (fun memberValue -> match memberValue with :? 'T as value -> Some value | _ -> None)
-        }
+
+    let inline getMember<'T when 'T :> ResoniteLink.Member>
+        (memberName: string)
+        ([<InlineIfLambda>] previousQuery: RPath<Component>)
+        : RPath<'T> =
+        fun link ->
+            task {
+                let! results = previousQuery link
+
+                return
+                    results
+                    |> Seq.map (fun c -> c.Members.TryGetValue memberName)
+                    |> Seq.filter fst
+                    |> Seq.map snd
+                    |> Seq.choose (fun memberValue ->
+                        match memberValue with
+                        | :? 'T as value -> Some value
+                        | _ -> None)
+            }
 
     let inline itemAt (index: int) ([<InlineIfLambda>] previousQuery: RPath<'T>) : RPath<'T> =
         fun link ->
@@ -247,32 +246,41 @@ module RPath =
                     |> Seq.skip normalizedStart
                     |> Seq.take (normalizedStop - normalizedStart)
             }
-            
-    let inline dereference (dereferenceFunc: ILinkInterface -> string -> Task<'T> when 'T : (member Success : bool) and 'T: (member ErrorInfo: string) and 'T: (member Data: 'U)) ([<InlineIfLambda>] previousQuery: RPath<Reference>) : RPath<'U> = fun link ->
-        task {
-            let! result = previousQuery link
-            let! slots: 'T[] =
-                result
-                |> Seq.filter (_.TargetID >> isNull >> not)
-                |> Seq.map _.TargetID
-                |> Seq.map (dereferenceFunc link)
-                |> Task.WhenAll
-            if slots |> Seq.forall _.Success then
-                return slots |> Array.map _.Data |> Array.toSeq
-            else
-                let errors = slots |> Array.filter (not << _.Success) |> Array.map _.ErrorInfo |> String.concat "\n"
-                return ResoniteLinkException.Raise errors
-        }
-    let inline dereferenceSlot deep ([<InlineIfLambda>] previousQuery: RPath<Reference>) : RPath<Slot> =
-        let getSlot (link: ILinkInterface) slotID = link.GetSlotData(GetSlot(SlotID=slotID, Depth=0, IncludeComponentData=deep))
-        dereference getSlot previousQuery
-    let inline dereferenceSlotShallow previousQuery = dereferenceSlot false previousQuery
-    let inline dereferenceSlotDeep previousQuery = dereferenceSlot true previousQuery
 
-    let inline dereferenceComponent ([<InlineIfLambda>] previousQuery: RPath<Reference>) : RPath<Component> =
-        let getComponent (link: ILinkInterface) componentID = link.GetComponentData(GetComponent(ComponentID=componentID))
-        dereference getComponent previousQuery
-        
+    let inline dereference
+        (dereferenceFunc:
+            ILinkInterface -> string -> Task<'T>
+                when 'T: (member Success: bool) and 'T: (member ErrorInfo: string) and 'T: (member Data: 'U))
+        (referenceValue: Reference)
+        : RPath<'U> =
+        fun link ->
+            if isNull referenceValue.TargetID then
+                Task.FromResult(Seq.empty)
+            else
+                task {
+                    let! dereferencedValue = dereferenceFunc link referenceValue.TargetID
+
+                    if dereferencedValue.Success then
+                        return Seq.singleton dereferencedValue.Data
+                    else
+                        return raise (ResoniteLinkException dereferencedValue.ErrorInfo)
+                }
+
+    let inline dereferenceSlot deep (referenceValue: Reference) : RPath<Slot> =
+        let getSlot (link: ILinkInterface) slotID =
+            link.GetSlotData(GetSlot(SlotID = slotID, Depth = 0, IncludeComponentData = deep))
+
+        dereference getSlot referenceValue
+
+    let inline dereferenceSlotShallow referenceValue = dereferenceSlot false referenceValue
+    let inline dereferenceSlotDeep referenceValue = dereferenceSlot true referenceValue
+
+    let inline dereferenceComponent (referenceValue: Reference) : RPath<Component> =
+        let getComponent (link: ILinkInterface) componentID =
+            link.GetComponentData(GetComponent(ComponentID = componentID))
+
+        dereference getComponent referenceValue
+
     let inline CastQuery<'T> ([<InlineIfLambda>] previousQuery: RPath<obj>) : RPath<'T> =
         fun link ->
             task {
@@ -307,8 +315,6 @@ module RPath =
     let root: RPath<Slot> =
         fun link ->
             task {
-                match! link.GetSlotData(GetSlot(SlotID = "Root", Depth = 0)) with
-                | FailedResponse err -> return ResoniteLinkException.Raise err
-                | SlotResponse rootSlot -> return rootSlot |> Seq.singleton
-                | otherwise -> return illegalApiResponse otherwise
+                let! rootSlot = getSlot "Root" 0 false link
+                return Seq.singleton rootSlot
             }
