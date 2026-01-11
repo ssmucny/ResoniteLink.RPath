@@ -14,18 +14,23 @@ var connectionTarget = Console.ReadLine().Trim();
 Uri targetUrl;
 
 if (int.TryParse(connectionTarget, out var port))
+{
     targetUrl = new Uri($"ws://localhost:{port}");
+}
 else if (!Uri.TryCreate(connectionTarget, UriKind.Absolute, out targetUrl))
 {
     Console.WriteLine("Failed to parse URL");
     return 1;
 }
 
-if(targetUrl.Scheme != "ws")
+if (targetUrl.Scheme != "ws")
 {
     Console.WriteLine("Scheme must be ws (websocket)");
     return 1;
 }
+
+var link = new LinkInterface();
+await link.Connect(targetUrl, CancellationToken.None);
 
 // build and execute query
 var query = await link.RPath() // start at root
@@ -40,15 +45,18 @@ var query = await link.RPath() // start at root
     // .ToListAsync(); // throws exception on error instead of packaging as a result
     .ToResultAsync();
 
+// check result
 if (query.IsOk)
 {
     Console.WriteLine("Success!");
     Console.WriteLine(string.Join('\n', query.ResultValue.ToArray()));
+    return 0;
 }
 else
 {
     Console.WriteLine("Error!");
     Console.WriteLine($"Error: {query.ErrorValue.Message}");
+    return 1;
 }
 ```
 
