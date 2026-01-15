@@ -1,6 +1,6 @@
 # RPath
 
-A query EDSL that allows querying ResoniteLink with more ergonomic operations. Similar in style to [LINQ to XML](https://learn.microsoft.com/en-us/dotnet/standard/linq/linq-xml-overview) with some differencecs.
+A query EDSL that allows querying [ResoniteLink](https://github.com/Yellow-Dog-Man/ResoniteLink) with more ergonomic operations. Similar in style to [LINQ to XML](https://learn.microsoft.com/en-us/dotnet/standard/linq/linq-xml-overview) with some differencecs.
 
 Usage from C# follows a similar pattern to LINQ where you utilize a special type (called `RPathBuilder<T>` here), and you perform operations by calling extension methods defined on the type. They can be chained together and composed to form more complex queries.
 
@@ -62,7 +62,7 @@ else
 
 ## Items to note
 
-- On demand: It will communicate with ResoniteLink to explore the heigherarchy as it needs to.
+- On demand: It will communicate with ResoniteLink to explore the hierarchy as it needs to.
 - No batching of requests: Each request for data is a separtate request, so queries that require many fetches of new data will have high latency
 - Immutable and composabe: when calling a method on the builder a new one is returned istead of modifying the current instance. You can use this to reuse parts of queries to create more complex behavior. 
 - .NET Standard 2.0: compatible with .NET and .NET Framework (Unity)
