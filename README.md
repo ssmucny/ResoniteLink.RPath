@@ -77,13 +77,13 @@ One notable difference is that with F# API you define queries without providing 
 // Using the pipe operator
 let nodesPipe =
     root
-    |> andThen childrenDeep
+    |> bind childrenDeep
     |> filter (fun x -> x.Name.Value = "TestSlot")
-    |> andThen components
+    |> bind components
     |> ofType "FrooxEngine.ReferenceField<FrooxEngine.Slot>"
     |> getMember<Reference> "Reference"
-    |> andThen dereferenceSlotShallow
-    |> andThen ancestorsShallow
+    |> bind dereferenceSlotShallow
+    |> bind ancestorsShallow
     |> map _.Name.Value
     |> toArrayAsync (link.ToInterface())
     

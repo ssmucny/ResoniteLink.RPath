@@ -2,6 +2,7 @@ namespace ResoniteLink.RPath
 
 open System
 open System.Runtime.CompilerServices
+open System.Threading.Tasks
 open ResoniteLink
 open ResoniteLink.RPath
 
@@ -50,9 +51,13 @@ type RPathBuilder<'T> with
         { Link = this.Link
           RunWith = RPath.filter predicate.Invoke this.RunWith }
 
+    member inline this.AndThen(continuation: Func<'T seq, ValueTask<'U seq>>) =
+        { Link = this.Link
+          RunWith = RPath.andThen continuation.Invoke this.RunWith }
+
     member inline this.SelectMany(collector: Func<'T, RPath<'U>>) =
         { Link = this.Link
-          RunWith = RPath.flatmap collector.Invoke this.RunWith }
+          RunWith = RPath.bind collector.Invoke this.RunWith }
 
     member inline this.Take(count: int) =
         { Link = this.Link
@@ -82,64 +87,71 @@ type ReferenceBuilderExtensions =
     [<Extension>]
     static member inline DereferenceSlot(referenceQuery: RPathBuilder<Reference>) =
         { Link = referenceQuery.Link
-          RunWith = RPath.flatmap RPath.dereferenceSlotDeep referenceQuery.RunWith }
+          RunWith = RPath.bind RPath.dereferenceSlotDeep referenceQuery.RunWith }
 
     [<Extension>]
     static member inline DereferenceSlotShallow(referenceQuery: RPathBuilder<Reference>) =
         { Link = referenceQuery.Link
-          RunWith = RPath.flatmap RPath.dereferenceSlotShallow referenceQuery.RunWith }
+          RunWith = RPath.bind RPath.dereferenceSlotShallow referenceQuery.RunWith }
 
     [<Extension>]
     static member inline DereferenceComponent(referenceQuery: RPathBuilder<Reference>) =
         { Link = referenceQuery.Link
-          RunWith = RPath.flatmap RPath.dereferenceComponent referenceQuery.RunWith }
+          RunWith = RPath.bind RPath.dereferenceComponent referenceQuery.RunWith }
 
 [<Extension>]
 type SlotQueryBuilderExtensions =
     [<Extension>]
     static member inline Children(slotQuery: RPathBuilder<Slot>) =
         { Link = slotQuery.Link
-          RunWith = RPath.flatmap RPath.childrenDeep slotQuery.RunWith }
+          RunWith = RPath.bind RPath.childrenDeep slotQuery.RunWith }
 
     [<Extension>]
     static member inline Parent(slotQuery: RPathBuilder<Slot>) =
         { Link = slotQuery.Link
-          RunWith = RPath.flatmap RPath.parentDeep slotQuery.RunWith }
+          RunWith = RPath.bind RPath.parentDeep slotQuery.RunWith }
 
     [<Extension>]
     static member inline Ancestors(slotQuery: RPathBuilder<Slot>) =
         { Link = slotQuery.Link
-          RunWith = RPath.flatmap RPath.ancestorsDeep slotQuery.RunWith }
+          RunWith = RPath.bind RPath.ancestorsDeep slotQuery.RunWith }
 
     [<Extension>]
     static member inline Descendants(slotQuery: RPathBuilder<Slot>) =
         { Link = slotQuery.Link
-          RunWith = RPath.flatmap RPath.descendantsDeep slotQuery.RunWith }
+          RunWith = RPath.bind RPath.descendantsDeep slotQuery.RunWith }
 
     [<Extension>]
     static member inline ChildrenShallow(slotQuery: RPathBuilder<Slot>) =
         { Link = slotQuery.Link
-          RunWith = RPath.flatmap RPath.childrenShallow slotQuery.RunWith }
+          RunWith = RPath.bind RPath.childrenShallow slotQuery.RunWith }
 
     [<Extension>]
     static member inline ParentShallow(slotQuery: RPathBuilder<Slot>) =
         { Link = slotQuery.Link
-          RunWith = RPath.flatmap RPath.parentShallow slotQuery.RunWith }
+          RunWith = RPath.bind RPath.parentShallow slotQuery.RunWith }
 
     [<Extension>]
     static member inline AncestorsShallow(slotQuery: RPathBuilder<Slot>) =
         { Link = slotQuery.Link
-          RunWith = RPath.flatmap RPath.ancestorsShallow slotQuery.RunWith }
+          RunWith = RPath.bind RPath.ancestorsShallow slotQuery.RunWith }
 
     [<Extension>]
     static member inline DescendantsShallow(slotQuery: RPathBuilder<Slot>) =
         { Link = slotQuery.Link
-          RunWith = RPath.flatmap RPath.descendantsShallow slotQuery.RunWith }
+          RunWith = RPath.bind RPath.descendantsShallow slotQuery.RunWith }
 
     [<Extension>]
     static member inline Components(slotQuery: RPathBuilder<Slot>) =
         { Link = slotQuery.Link
-          RunWith = RPath.flatmap RPath.components slotQuery.RunWith }
+          RunWith = RPath.bind RPath.components slotQuery.RunWith }
+
+[<Extension>]
+type EnumerableQueryBuilderExtensions =
+    [<Extension>]
+    static member inline SelectMany(items: RPathBuilder<'T seq>, collector: Func<'T, 'U seq>) =
+        { Link = items.Link
+          RunWith = RPath.flatmap collector.Invoke items.RunWith }
 
 [<Extension>]
 type ComponentQueryBuilderExtensions =
