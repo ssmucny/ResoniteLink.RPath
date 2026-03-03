@@ -24,7 +24,7 @@ type ILinkInterface =
     /// <summary>Adds a new slot to the data model.</summary>
     /// <param name="request">The request specifying the slot to add.</param>
     /// <returns>A task containing the operation response.</returns>
-    abstract member AddSlot: request: AddSlot -> Task<Response>
+    abstract member AddSlot: request: AddSlot -> Task<NewEntityId>
 
     /// <summary>Updates an existing slot in the data model.</summary>
     /// <param name="request">The request specifying the slot update.</param>
@@ -39,7 +39,7 @@ type ILinkInterface =
     /// <summary>Adds a new component to the data model.</summary>
     /// <param name="request">The request specifying the component to add.</param>
     /// <returns>A task containing the operation response.</returns>
-    abstract member AddComponent: request: AddComponent -> Task<Response>
+    abstract member AddComponent: request: AddComponent -> Task<NewEntityId>
 
     /// <summary>Updates an existing component in the data model.</summary>
     /// <param name="request">The request specifying the component update.</param>
