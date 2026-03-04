@@ -7,7 +7,7 @@
         <PackageId>ResoniteLink.Builder</PackageId>
         <Version>0.1.0</Version>
         <Authors>Sam Smucny</Authors>
-        <Description>An Elmish-inspired DSL for declaratively constructing ResoniteLink slot hierarchies with nested components and children.</Description>
+        <Description>An EDSL for declaratively constructing ResoniteLink slot hierarchies with nested components and children.</Description>
         <PackageTags>Resonite ResoniteLink Builder DSL Elmish</PackageTags>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <PackageReadmeFile>README.md</PackageReadmeFile>
