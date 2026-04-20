@@ -813,17 +813,3 @@ module Operators =
         ([<InlineIfLambda>] right: 'Inner -> Query<'Out>)
         : 'In -> Query<'Out> =
         Query.pipeTo right left
-
-module Test =
-    let test =
-        task {
-            let link: LinkInterface = failwith ""
-
-            let! rootSlot =
-                Query.root
-                |> Query.children false
-                |> Query.filter _.Name.Value.Contains("Proxy")
-                |> Query.first link
-            // |> Query.runAsync link
-            return ()
-        }
