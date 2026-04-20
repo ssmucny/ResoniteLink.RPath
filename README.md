@@ -100,7 +100,8 @@ task {
         Query.root
         |> Query.children false
         |> Query.filter _.Name.Value.Contains("Proxy")
-        |> Query.first link
+        |> Query.first
+        |> link
         // Use Query.toArray link for multiple results
 
     match proxyUnderRoot with

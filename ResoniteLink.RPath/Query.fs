@@ -627,12 +627,46 @@ module Query =
     let inline cast<'T> (query: Query<obj>) : Query<'T> = query |> mapAll Seq.cast<'T>
 
     /// <summary>
+    /// Executes a query and returns at most the first result only if it exists.
+    /// </summary>
+    /// <param name="query">The query to execute.</param>
+    /// <param name="link">The active ResoniteLink interface used to execute the query.</param>
+    /// <returns>The first result wrapped in <c>Some</c>, or <c>None</c> when the query is empty.</returns>
+    /// <exception cref="ResoniteLinkException">Thrown when a ResoniteLink operation fails.</exception>
+    let inline first (query: Query<'T>) =
+        q (fun link ->
+            task {
+                let! items = query.RunQuery link
+                return Seq.truncate 1 items
+            }
+            |> ValueTask<'T seq>)
+
+    /// <summary>
+    /// Executes a query and returns the first result, or <paramref name="defaultValue"/> when no values are produced.
+    /// </summary>
+    /// <param name="defaultValue">The fallback value returned when the query is empty.</param>
+    /// <param name="query">The query to execute.</param>
+    /// <param name="link">The active ResoniteLink interface used to execute the query.</param>
+    /// <returns>The first query result when present; otherwise <paramref name="defaultValue"/>.</returns>
+    /// <exception cref="ResoniteLinkException">Thrown when a ResoniteLink operation fails.</exception>
+    let inline firstOr (defaultValue: 'T) (query: Query<'T>) =
+        q (fun link ->
+            task {
+                let! items = query.RunQuery link
+
+                match Seq.tryHead items with
+                | Some firstItem -> return Seq.singleton firstItem
+                | None -> return Seq.singleton defaultValue
+            }
+            |> ValueTask<'T seq>)
+
+    /// <summary>
     /// Executes a query and returns the result as a <c>Result</c>, capturing <see cref="T:ResoniteLink.RPath.ResoniteLinkException"/> failures.
     /// </summary>
     /// <remarks>
     /// Exceptions thrown by user-provided projection/filter code are not wrapped and continue to propagate.
     /// </remarks>
-    let inline toResult (link: LinkInterface) (query: Query<'T>) =
+    let inline toResult (query: Query<'T>) (link: LinkInterface) =
         task {
             try
                 let! result = query.RunQuery link
@@ -646,13 +680,13 @@ module Query =
     /// Executes a query and returns the results as a sequence.
     /// </summary>
     /// <exception cref="ResoniteLinkException">Thrown when a ResoniteLink operation fails.</exception>
-    let inline toSeq (link: LinkInterface) (query: Query<'T>) = query.RunQuery link
+    let inline toSeq (query: Query<'T>) (link: LinkInterface) = query.RunQuery link
 
     /// <summary>
     /// Executes a query and returns the results as an array.
     /// </summary>
     /// <exception cref="ResoniteLinkException">Thrown when a ResoniteLink operation fails.</exception>
-    let inline toArray (link: LinkInterface) (query: Query<'T>) =
+    let inline toArray (query: Query<'T>) (link: LinkInterface) =
         task {
             let! items = query.RunQuery link
             return (Seq.toArray items)
@@ -663,7 +697,7 @@ module Query =
     /// Executes a query and returns the results as a ResizeArray (List&lt;T&gt;).
     /// </summary>
     /// <exception cref="ResoniteLinkException">Thrown when a ResoniteLink operation fails.</exception>
-    let inline toResizeArray (link: LinkInterface) (query: Query<'T>) =
+    let inline toResizeArray (query: Query<'T>) (link: LinkInterface) =
         task {
             let! items = query.RunQuery link
             return (ResizeArray items)
@@ -671,33 +705,28 @@ module Query =
         |> ValueTask<ResizeArray<'T>>
 
     /// <summary>
-    /// Executes a query and returns the first result, or <c>None</c> if the query produces no values.
+    /// Executes a query and returns the single result when exactly one value is produced, or raises an exception otherwise.
     /// </summary>
-    /// <param name="query">The query to execute.</param>
-    /// <param name="link">The active ResoniteLink interface used to execute the query.</param>
-    /// <returns>The first result wrapped in <c>Some</c>, or <c>None</c> when the query is empty.</returns>
-    /// <exception cref="ResoniteLinkException">Thrown when a ResoniteLink operation fails.</exception>
-    let inline first (link: LinkInterface) (query: Query<'T>) =
+    /// <param name="query"></param>
+    /// <param name="link"></param>
+    let inline exactlyOne (query: Query<'T>) (link: LinkInterface) =
         task {
             let! items = query.RunQuery link
-            return Seq.tryHead items
-        }
-        |> ValueTask<'T option>
-
-    /// <summary>
-    /// Executes a query and returns the first result, or <paramref name="defaultValue"/> when no values are produced.
-    /// </summary>
-    /// <param name="defaultValue">The fallback value returned when the query is empty.</param>
-    /// <param name="query">The query to execute.</param>
-    /// <param name="link">The active ResoniteLink interface used to execute the query.</param>
-    /// <returns>The first query result when present; otherwise <paramref name="defaultValue"/>.</returns>
-    /// <exception cref="ResoniteLinkException">Thrown when a ResoniteLink operation fails.</exception>
-    let inline firstOr (defaultValue: 'T) (link: LinkInterface) (query: Query<'T>) =
-        task {
-            let! items = query.RunQuery link
-            return Seq.tryHead items |> Option.defaultValue defaultValue
+            return Seq.exactlyOne items
         }
         |> ValueTask<'T>
+
+    /// <summary>
+    /// Executes a query and returns the single result wrapped in <c>Some</c> when exactly one value is found, <c>None</c> when no values are produced or there is more than one.
+    /// </summary>
+    /// <param name="query"></param>
+    /// <param name="link"></param>
+    let inline tryExactlyOne (query: Query<'T>) (link: LinkInterface) =
+        task {
+            let! items = query.RunQuery link
+            return Seq.tryExactlyOne items
+        }
+        |> ValueTask<'T option>
 
     /// <summary>
     /// A query that returns the root slot from the data model. Usable as an entry point from the base of the hierarchy.
@@ -784,3 +813,17 @@ module Operators =
         ([<InlineIfLambda>] right: 'Inner -> Query<'Out>)
         : 'In -> Query<'Out> =
         Query.pipeTo right left
+
+module Test =
+    let test =
+        task {
+            let link: LinkInterface = failwith ""
+
+            let! rootSlot =
+                Query.root
+                |> Query.children false
+                |> Query.filter _.Name.Value.Contains("Proxy")
+                |> Query.first link
+            // |> Query.runAsync link
+            return ()
+        }

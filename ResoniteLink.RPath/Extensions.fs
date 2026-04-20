@@ -88,12 +88,25 @@ type QueryExtensions =
 
     /// <summary>Executes the query and returns the first result, or None if the sequence is empty.</summary>
     [<Extension>]
-    static member inline First(query: Query<'T>, link: LinkInterface) : ValueTask<'T option> = Query.first query link
+    static member inline First(query: Query<'T>, link: LinkInterface) : Query<'T> = Query.first query
 
     /// <summary>Executes the query and returns the first result, or <paramref name="defaultValue"/> if empty.</summary>
     [<Extension>]
-    static member inline FirstOr(query: Query<'T>, defaultValue: 'T, link: LinkInterface) : ValueTask<'T> =
+    static member inline FirstOr(query: Query<'T>, defaultValue: 'T, link: LinkInterface) : Query<'T> =
         Query.firstOr defaultValue query link
+
+    /// <summary>Executes the query and returns the single result, or throws if there are zero or multiple results.</summary>
+    [<Extension>]
+    static member inline Single(query: Query<'T>, link: LinkInterface) : ValueTask<'T> = Query.exactlyOne query link
+
+    /// <summary>Executes the query and returns the single result, or <paramref name="defaultValue"/> if there are zero results or more than 1</summary>
+    [<Extension>]
+    static member inline SingleOr(query: Query<'T>, defaultValue: 'T, link: LinkInterface) : ValueTask<'T> =
+        task {
+            let! result = Query.tryExactlyOne query link
+            return result |> Option.defaultValue defaultValue
+        }
+        |> ValueTask<'T>
 
 /// <summary>
 /// Extension methods on Query&lt;Slot&gt; for navigating the slot hierarchy, using F# function types.
