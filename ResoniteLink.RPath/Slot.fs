@@ -12,7 +12,7 @@ module Slot =
 
     /// <summary>Gets the direct children of a slot.</summary>
     let children (includeComponents: bool) (slot: Slot) : Query<Slot> =
-        Query.wrap slot |> Query.children includeComponents
+        Query.wrap (nullArgCheck (nameof slot) slot) |> Query.children includeComponents
 
     /// <summary>Gets direct children of a slot that satisfy a predicate.</summary>
     let inline child ([<InlineIfLambda>] childPredicate) (includeComponents: bool) (slot: Slot) : Query<Slot> =
@@ -26,7 +26,8 @@ module Slot =
 
     /// <summary>Gets all descendants of a slot (children, grandchildren, etc.).</summary>
     let descendants (includeComponents: bool) (slot: Slot) : Query<Slot> =
-        Query.wrap slot |> Query.descendants includeComponents
+        Query.wrap (nullArgCheck (nameof slot) slot)
+|> Query.descendants includeComponents
 
     /// <summary>Gets all descendants of a slot without component data.</summary>
     let descendantsLite (slot: Slot) : Query<Slot> = descendants false slot
@@ -36,7 +37,8 @@ module Slot =
 
     /// <summary>Gets the slot and all of its descendants (children, grandchildren, etc.).</summary>
     let descendantsAndSelf (includeComponents: bool) (slot: Slot) : Query<Slot> =
-        Query.wrap slot |> Query.descendantsAndSelf includeComponents
+        Query.wrap (nullArgCheck (nameof slot) slot)
+        |> Query.descendantsAndSelf includeComponents
 
     /// <summary>Gets the slot and all of its descendants without component data.</summary>
     let descendantsAndSelfLite (slot: Slot) : Query<Slot> = descendantsAndSelf false slot
@@ -46,7 +48,7 @@ module Slot =
 
     /// <summary>Gets the parent of a slot.</summary>
     let parent (includeComponents: bool) (slot: Slot) : Query<Slot> =
-        Query.wrap slot |> Query.parent includeComponents
+        Query.wrap (nullArgCheck (nameof slot) slot) |> Query.parent includeComponents
 
     /// <summary>Gets the parent of a slot without component data.</summary>
     let parentLite (slot: Slot) : Query<Slot> = parent false slot
@@ -56,7 +58,8 @@ module Slot =
 
     /// <summary>Gets all ancestors of a slot (parent, grandparent, etc.) up to the root.</summary>
     let ancestors (includeComponents: bool) (slot: Slot) : Query<Slot> =
-        Query.wrap slot |> Query.ancestors includeComponents
+        Query.wrap (nullArgCheck (nameof slot) slot)
+        |> Query.ancestors includeComponents
 
     /// <summary>Gets all ancestors of a slot without component data.</summary>
     let ancestorsLite (slot: Slot) : Query<Slot> = ancestors false slot
@@ -66,7 +69,8 @@ module Slot =
 
     /// <summary>Gets the slot and all of its ancestors (parent, grandparent, etc.) up to the root.</summary>
     let ancestorsAndSelf (includeComponents: bool) (slot: Slot) : Query<Slot> =
-        Query.wrap slot |> Query.ancestorsAndSelf includeComponents
+        Query.wrap (nullArgCheck (nameof slot) slot)
+        |> Query.ancestorsAndSelf includeComponents
 
     /// <summary>Gets the slot and all of its ancestors without component data.</summary>
     let ancestorsAndSelfLite (slot: Slot) : Query<Slot> = ancestorsAndSelf false slot

@@ -1,7 +1,6 @@
 namespace ResoniteLink.RPath
 
 open System
-open System.Linq
 open System.Threading.Tasks
 open ResoniteLink
 
@@ -35,18 +34,69 @@ module Query =
 
     let inline private q ([<InlineIfLambda>] run) : Query<'T> = { RunQuery = run }
 
-    let private mapById (slots: seq<Slot>) =
-        slots |> Seq.map (fun slot -> slot.ID, slot) |> Map.ofSeq
+    let inline private nonNullValues (items: seq<'T>) = items |> Seq.choose Option.ofObj
 
-    let private tryParentId (slot: Slot) = slot.Parent.TargetID |> Option.ofObj
+    let private trySlotId (slot: Slot) =
+        slot
+        |> Option.ofObj
+        |> Option.map (fun nonNullSlot ->
+            assert (not <| isNull nonNullSlot.ID)
+            nonNullSlot.ID)
+
+    let private slotIDsOf (slots: seq<Slot>) = slots |> Seq.choose trySlotId
+
+    let private tryReferenceTargetId (reference: Reference) =
+        reference
+        |> Option.ofObj
+        |> Option.bind (fun nonNullReference -> nonNullReference.TargetID |> Option.ofObj)
+
+    let private mapById (slots: seq<Slot>) =
+        slots
+        |> Seq.choose (fun slot ->
+            slot
+            |> Option.ofObj
+            |> Option.map (fun nonNullSlot ->
+                assert (not <| isNull nonNullSlot.ID)
+                nonNullSlot.ID, nonNullSlot))
+        |> Map.ofSeq
+
+    // Null for root (Parent.TargetID = null signals no parent); Slot.Parent itself is never null from API.
+    let private tryParentId (slot: Slot) =
+        if isNull slot then
+            None
+        else
+            assert (not <| isNull slot.Parent)
+            slot.Parent.TargetID |> Option.ofObj
+
+    // Children is null for leaf slots and reference-only slots
+    let private slotChildrenOrEmpty (slot: Slot) : seq<Slot> =
+        if isNull slot || isNull slot.Children then
+            Seq.empty
+        else
+            slot.Children :> seq<Slot>
+
+    // Components is null on reference-only stubs that fail hydration
+    let private slotComponentsOrEmpty (slot: Slot) : seq<Component> =
+        if isNull slot || isNull slot.Components then
+            Seq.empty
+        else
+            slot.Components :> seq<Component>
 
     /// <summary>Internal helper to raise an exception for unexpected API response types.</summary>
-    let illegalApiResponse response =
-        raise (Exception $"Illegal ResoniteLink API response type: {response.GetType().FullName}")
+    let illegalApiResponse (response: Response) =
+        let responseType =
+            if isNull response then
+                "<null>"
+            else
+                response.GetType().FullName
+
+        raise (Exception $"Illegal ResoniteLink API response type: {responseType}")
 
     /// <summary>Active pattern for matching ResoniteLink response types.</summary>
     let (|FailedResponse|SlotResponse|ComponentResponse|AssetResponse|) (response: Response) =
         match response with
+        // A null response entry is treated as a protocol/API contract violation.
+        | null -> invalidArg (nameof response) "The provided message is null."
         | r when not r.Success -> FailedResponse r.ErrorInfo
         | :? SlotData as s -> SlotResponse s.Data
         | :? ComponentData as c -> ComponentResponse c.Data
@@ -156,9 +206,11 @@ module Query =
     /// Internal helper to collect descendants from a fully loaded slot tree.
     let rec private collectChildrenRecursive (slot: Slot) =
         seq {
-            if not (isNull slot.Children) then
-                yield! slot.Children
-                yield! slot.Children |> Seq.collect collectChildrenRecursive
+            // Null slot values here are only expected from user-supplied query streams, not API responses from Resonite
+            if not (isNull slot) then
+                let children = slotChildrenOrEmpty slot
+                yield! children
+                yield! children |> Seq.collect collectChildrenRecursive
         }
 
     /// Internal helper for batched GetSlot requests.
@@ -226,6 +278,7 @@ module Query =
     /// Internal helper to identify slots that need hydration before components are available.
     let private requiresComponentHydration (slot: Slot) =
         slot.IsReferenceOnly
+        // Components can be null on reference-only stubs until hydrated.
         || isNull slot.Components
         || (slot.Components
             |> Seq.tryHead
@@ -278,18 +331,20 @@ module Query =
     /// <summary>
     /// Gets the direct children returned from a query of slots.
     /// </summary>
+    /// <remarks>Slots with <c>null</c> child collections are treated as having no children.</remarks>
     let children (includeComponents: bool) (slotQuery: Query<Slot>) : Query<Slot> =
         q (fun link ->
             task {
                 let! parentSlots = slotQuery.RunQuery link
-                let parentSlotIDs = parentSlots |> Seq.map (fun slot -> slot.ID) |> Seq.toArray
+let parentSlotIDs =
+    // Protect against null slots in user code.
+    parentSlots |> slotIDsOf |> Seq.toArray
                 let! hydratedParents = runGetSlotBatch includeComponents 1 parentSlotIDs link
 
                 return
                     seq {
                         for slot in hydratedParents do
-                            assert (not <| isNull slot.Children)
-                            yield! slot.Children
+                            yield! slotChildrenOrEmpty slot
                     }
             }
             |> ValueTask<Slot seq>)
@@ -321,7 +376,8 @@ module Query =
         q (fun link ->
             task {
                 let! sourceSlots = slotQuery.RunQuery link
-                let sourceSlotIDs = sourceSlots |> Seq.map _.ID |> Seq.toArray
+                // Null slots here are defensive handling for user-constructed query streams.
+                let sourceSlotIDs = sourceSlots |> slotIDsOf |> Seq.toArray
                 let! hydratedTrees = runGetSlotBatch includeComponents -1 sourceSlotIDs link
                 return hydratedTrees |> Seq.collect collectChildrenRecursive
             }
@@ -344,7 +400,8 @@ module Query =
         q (fun link ->
             task {
                 let! sourceSlots = slotQuery.RunQuery link
-                let sourceSlotIDs = sourceSlots |> Seq.map _.ID |> Seq.toArray
+                // Null slots here are defensive handling for user-constructed query streams.
+                let sourceSlotIDs = sourceSlots |> slotIDsOf |> Seq.toArray
                 let! hydratedTrees = runGetSlotBatch includeComponents -1 sourceSlotIDs link
 
                 return
@@ -373,7 +430,8 @@ module Query =
         q (fun link ->
             task {
                 let! sourceSlots = slotQuery.RunQuery link
-                let sourceSlotsArray = sourceSlots |> Seq.toArray
+                // Null slots here are defensive handling for user-constructed query streams.
+                let sourceSlotsArray = sourceSlots |> nonNullValues |> Seq.toArray
                 let! hydratedSources = hydrateReferenceOnlySlots sourceSlotsArray link
 
                 let parentIDsInOrder = hydratedSources |> Array.choose tryParentId
@@ -409,7 +467,8 @@ module Query =
         q (fun link ->
             task {
                 let! sourceSlots = slotQuery.RunQuery link
-                let sourceSlotsArray = sourceSlots |> Seq.toArray
+                // Null slots here are defensive handling for user-constructed query streams.
+                let sourceSlotsArray = sourceSlots |> nonNullValues |> Seq.toArray
                 let! hydratedSources = hydrateReferenceOnlySlots sourceSlotsArray link
 
                 let! ancestorSlots = walkAncestors includeComponents hydratedSources link
@@ -434,7 +493,8 @@ module Query =
         q (fun link ->
             task {
                 let! sourceSlots = slotQuery.RunQuery link
-                let sourceSlotsArray = sourceSlots |> Seq.toArray
+                // Null slots here are defensive handling for user-constructed query streams.
+                let sourceSlotsArray = sourceSlots |> nonNullValues |> Seq.toArray
                 let! hydratedSources = hydrateReferenceOnlySlots sourceSlotsArray link
                 let! ancestorSlots = walkAncestors includeComponents hydratedSources link
 
@@ -459,12 +519,16 @@ module Query =
     /// <summary>
     /// Gets the components attached to each slot in a query.
     /// </summary>
-    /// <remarks>If component data is not already loaded, this batches hydration requests by slot ID.</remarks>
+    /// <remarks>
+    /// If component data is not already loaded, this batches hydration requests by slot ID.
+    /// Slots with <c>null</c> component collections are treated as having no components.
+    /// </remarks>
     let components (slotQuery: Query<Slot>) : Query<Component> =
         q (fun link ->
             task {
                 let! sourceSlots = slotQuery.RunQuery link
-                let sourceSlotsArray = sourceSlots |> Seq.toArray
+                // Null slots here are defensive handling for user-constructed query streams.
+                let sourceSlotsArray = sourceSlots |> nonNullValues |> Seq.toArray
 
                 let slotsToHydrateIDs =
                     sourceSlotsArray
@@ -484,8 +548,7 @@ module Query =
                                 else
                                     slot
 
-                            assert (not <| isNull resolvedSlot.Components)
-                            yield! resolvedSlot.Components.AsEnumerable()
+                            yield! slotComponentsOrEmpty resolvedSlot
                     }
             }
             |> ValueTask<Component seq>)
@@ -503,9 +566,14 @@ module Query =
     let inline getMember<'T when 'T :> ResoniteLink.Member> (memberName: string) (query: Query<Component>) : Query<'T> =
         query
         |> mapAll (
-            Seq.map (fun c -> c.Members.TryGetValue memberName)
-            >> Seq.filter fst
-            >> Seq.map snd
+            Seq.choose (fun c ->
+                // Components in query streams can be null from user-provided values; Members can be null on partial payloads.
+                if isNull c || isNull c.Members then
+                    None
+                else
+                    match c.Members.TryGetValue memberName with
+                    | true, value -> Some value
+                    | false, _ -> None)
             >> Seq.choose (function
                 | :? 'T as value -> Some value
                 | _ -> None)
@@ -569,7 +637,8 @@ module Query =
 
                 let uniqueSlotsToGet =
                     references
-                    |> Seq.choose (_.TargetID >> Option.ofObj)
+                    // Reference values can be null in user-provided query streams; TargetID null means unresolved reference.
+                    |> Seq.choose tryReferenceTargetId
                     |> Seq.toArray
                     |> Array.distinct
 
@@ -599,7 +668,8 @@ module Query =
 
                 let uniqueComponentsToGet =
                     references
-                    |> Seq.choose (fun reference -> reference.TargetID |> Option.ofObj)
+                    // Reference values can be null in user-provided query streams; TargetID null means unresolved reference.
+                    |> Seq.choose tryReferenceTargetId
                     |> Seq.toArray
                     |> Array.distinct
 
